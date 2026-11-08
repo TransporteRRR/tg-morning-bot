@@ -146,7 +146,7 @@ def get_alushta_sea_temp():
             headers=headers,
             timeout=8,
         ).text
-        m = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*°C", html)
+        m = re.search(r"составляет\s*([0-9]+(?:\.[0-9]+)?)\s*°C", html)
         if m:
             return f"+{m.group(1)}°C"
     except Exception:
@@ -195,27 +195,113 @@ def get_weather():
     return "\n".join(lines)
 
 
+def clean_wiki(text):
+    text = re.sub(r"\[\[(?:[^|\]]*\|)?([^\]]+)\]\]", r"\1", text)
+    text = re.sub(r"\{\{[^}]+\}\}", "", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    return text.strip(" *—–-")
+
+
 def get_holidays():
-    today_str = datetime.now().strftime("%d.%m")
-    prompt = (
-        f"Сегодня дата {today_str}. Напиши строго в 2 короткие строки без вступлений и кавычек:\n"
-        f"• 🇷🇺 В России: (главный государственный, профессиональный или народный праздник России на {today_str})\n"
-        f"• 🇨🇳 В Китае: (какой сегодня праздник, памятный день или сезон в Китае на {today_str})"
-    )
+    """Праздники в России (из Википедии) и в Китае (праздники КНР + 24 сезона Цзеци)"""
+    now = datetime.now()
+    months = [
+        "",
+        "января",
+        "февраля",
+        "марта",
+        "апреля",
+        "мая",
+        "июня",
+        "июля",
+        "августа",
+        "сентября",
+        "октября",
+        "ноября",
+        "декабря",
+    ]
+    page = f"{now.day}_{months[now.month]}"
+
+    ru_hol = "Памятный день календаря"
+    cn_wiki_hol = None
+
     try:
-        r = requests.post(
-            "https://text.pollinations.ai/",
-            json={
-                "messages": [{"role": "user", "content": prompt}],
-                "model": "openai",
-            },
-            timeout=15,
+        url = f"https://ru.wikipedia.org/w/api.php?action=parse&page={page}&prop=wikitext&format=json"
+        r = requests.get(
+            url, headers={"User-Agent": "KavBot/1.0"}, timeout=8
+        ).json()
+        wikitext = r["parse"]["wikitext"]["*"]
+
+        # Вырезаем блок Праздники
+        m = re.search(
+            r"==\s*Праздники[^=]*==(.*?)(?:==[^=]|$)", wikitext, re.DOTALL
         )
-        if r.status_code == 200 and len(r.text.strip()) > 10:
-            return r.text.strip()
-    except Exception as e:
-        return f"Не удалось загрузить праздники ({e})"
-    return "Нет данных о праздниках"
+        section = m.group(1) if m else wikitext
+
+        ru_list = []
+        for line in section.split("\n"):
+            if "Россия" in line or "СССР" in line:
+                parts = line.split(":", 1)
+                item = clean_wiki(parts[1] if len(parts) > 1 else line)
+                if len(item) > 3:
+                    ru_list.append(item)
+            if "Китай" in line or "КНР" in line:
+                parts = line.split(":", 1)
+                cn_wiki_hol = clean_wiki(parts[1] if len(parts) > 1 else line)
+
+        # Если нет чисто российского, берём международный или народный из этого же дня
+        if not ru_list:
+            for line in section.split("\n"):
+                if line.startswith("* ") and ":" not in line:
+                    item = clean_wiki(line)
+                    if len(item) > 4:
+                        ru_list.append(item)
+        if ru_list:
+            ru_hol = "; ".join(ru_list[:2])
+    except Exception:
+        pass
+
+    # Праздники и сезоны Китая
+    cn_fixed = {
+        (1, 1): "Новый год (元旦 Юаньдань)",
+        (2, 14): "Праздник весны / Китайский Новый год (春节)",
+        (3, 8): "Международный женский день (妇女节)",
+        (3, 12): "День посадки деревьев в КНР (植树节)",
+        (4, 4): "Праздник Цинмин (清明节)",
+        (5, 1): "День труда (劳动节)",
+        (5, 4): "День молодёжи Китая (青年节)",
+        (6, 1): "День защиты детей (儿童节)",
+        (7, 1): "День основания КПК (建党节)",
+        (8, 1): "День НОАК (建军节)",
+        (9, 10): "День учителя в Китае (教师节)",
+        (10, 1): "День образования КНР (国庆节)",
+        (11, 8): "День журналиста в Китае (记者节)",
+        (11, 11): "День холостяков / Всемирный день шопинга (双十一)",
+    }
+
+    # Определяем текущий традиционный сезон Китая (24 сезона Цзеци)
+    doy = now.timetuple().tm_yday
+    solar_terms = [
+        (311, "Сезон Лидун (立冬 — «Начало зимы», время пельменей цзяоцзы)"),
+        (326, "Сезон Сяосюэ (小雪 — «Малые снега»)"),
+        (341, "Сезон Дасюэ (大雪 — «Большие снега»)"),
+        (355, "Сезон Дунчжи (冬至 — «Зимнее солнцестояние»)"),
+        (296, "Сезон Шуанцзян (霜降 — «Выпадение инея»)"),
+        (281, "Сезон Ханьлу (寒露 — «Холодные росы»)"),
+        (266, "Сезон Цюфэнь (秋分 — «Осеннее равноденствие»)"),
+        (1, "Традиционный сезон китайского солнечного календаря (二十四节气)"),
+    ]
+    season_str = solar_terms[-1][1]
+    for start_day, name in sorted(solar_terms, reverse=True):
+        if doy >= start_day:
+            season_str = name
+            break
+
+    cn_hol = cn_fixed.get((now.month, now.day)) or cn_wiki_hol or season_str
+    if cn_fixed.get((now.month, now.day)) and season_str:
+        cn_hol = f"{cn_hol} • {season_str}"
+
+    return f"• 🇷🇺 <b>В России:</b> {ru_hol}\n• 🇨🇳 <b>В Китае:</b> {cn_hol}"
 
 
 def get_horoscope():
