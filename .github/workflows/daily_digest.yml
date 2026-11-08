@@ -1,0 +1,30 @@
+name: Daily Morning Digest
+
+on:
+  schedule:
+    # Запуск каждый день в 05:00 UTC (08:00 по Москве / Краснодару / Алуште)
+    - cron: '0 5 * * *'
+  workflow_dispatch: # Включает кнопку ручного запуска Run workflow
+
+jobs:
+  send_digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests urllib3
+
+      - name: Send morning duck and digest
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TZ: 'Europe/Moscow'
+        run: python send_rates.py
