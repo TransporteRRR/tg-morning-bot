@@ -5,6 +5,10 @@ import re
 import urllib.parse
 import xml.etree.ElementTree as ET
 import requests
+import urllib3
+
+# Отключаем предупреждения SSL от локального антивируса/провайдера
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def load_env(filepath=r"D:\AI scripts\паролимароли\1!.env"):
@@ -30,66 +34,112 @@ CITIES = [
     ("Ханчжоу", 30.2741, 120.1551),
 ]
 
+# Дни недели: (Приветствие RU, Фраза CN, Пиньинь + Русская транскрипция, Разбор дня недели)
 WEEKDAYS = {
-    0: ("Доброе утро! Отличного понедельника!", "早上好！祝你星期一愉快！"),
-    1: ("Доброе утро! Прекрасного вторника!", "早上好！祝你星期二愉快！"),
-    2: ("Доброе утро! Удачной среды!", "早上好！祝你星期三愉快！"),
-    3: ("Доброе утро! Хорошего четверга!", "早上好！祝你星期四愉快！"),
-    4: ("Доброе утро! С пятницей!", "早上好！祝你星期五愉快！"),
-    5: ("Доброе утро! Чудесной субботы!", "早上好！祝你星期六愉快！"),
-    6: ("Доброе утро! Прекрасного воскресенья!", "早上好！祝你星期日愉快！"),
+    0: (
+        "Доброе утро! Отличного понедельника!",
+        "早上好！祝你星期一愉快！",
+        "Zǎoshang hǎo! Zhù nǐ xīngqīyī yúkuài!",
+        "Цзаошан хао! Чжу ни син-цзи-и юйкуай! (星期一 [син-цзи-и] = понедельник, досл. «день недели №1»)",
+    ),
+    1: (
+        "Доброе утро! Прекрасного вторника!",
+        "早上好！祝你星期二愉快！",
+        "Zǎoshang hǎo! Zhù nǐ xīngqī'èr yúkuài!",
+        "Цзаошан хао! Чжу ни син-цзи-эр юйкуай! (星期二 [син-цзи-эр] = вторник, досл. «день недели №2»)",
+    ),
+    2: (
+        "Доброе утро! Удачной среды!",
+        "早上好！祝你星期三愉快！",
+        "Zǎoshang hǎo! Zhù nǐ xīngqīsān yúkuài!",
+        "Цзаошан хао! Чжу ни син-цзи-сань юйкуай! (星期三 [син-цзи-сань] = среда, досл. «день недели №3»)",
+    ),
+    3: (
+        "Доброе утро! Хорошего четверга!",
+        "早上好！祝你星期四愉快！",
+        "Zǎoshang hǎo! Zhù nǐ xīngqīsì yúkuài!",
+        "Цзаошан хао! Чжу ни син-цзи-сы юйкуай! (星期四 [син-цзи-сы] = четверг, досл. «день недели №4»)",
+    ),
+    4: (
+        "Доброе утро! С пятницей!",
+        "早上好！祝你星期五愉快！",
+        "Zǎoshang hǎo! Zhù nǐ xīngqīwǔ yúkuài!",
+        "Цзаошан хао! Чжу ни син-цзи-у юйкуай! (星期五 [син-цзи-у] = пятница, досл. «день недели №5»)",
+    ),
+    5: (
+        "Доброе утро! Чудесной субботы!",
+        "早上好！祝你星期六愉快！",
+        "Zǎoshang hǎo! Zhù nǐ xīngqīliù yúkuài!",
+        "Цзаошан хао! Чжу ни син-цзи-лю юйкуай! (星期六 [син-цзи-лю] = суббота, досл. «день недели №6»)",
+    ),
+    6: (
+        "Доброе утро! Прекрасного воскресенья!",
+        "早上好！祝你星期日愉快！",
+        "Zǎoshang hǎo! Zhù nǐ xīngqīrì yúkuài!",
+        "Цзаошан хао! Чжу ни син-цзи-жи юйкуай! (星期日 [син-цзи-жи] = воскресенье, досл. «день Солнца»)",
+    ),
 }
 
+# Средний план (MEDIUM SHOT, full body): утка в полный рост и красивый фон вокруг неё
 DUCK_STYLES = [
     (
-        "3D Pixar animation",
-        "cute fluffy 3D Pixar style duck waving wing happily, warm morning sunlight, coffee cup, 8k render",
+        "3D Pixar мультик",
+        "MEDIUM SHOT full body view: a cute yellow 3D Disney Pixar duck standing on a cozy wooden porch with a coffee mug, waving one wing at the viewer, sunny morning garden background, 8k render",
     ),
     (
         "Фото National Geographic",
-        "award winning National Geographic wildlife macro photo of a real cute duck waving its wing in golden morning mist by a lake",
+        "MEDIUM WIDE WILDLIFE PHOTO: a real cute mallard duck standing on a mossy stone by a mountain lake at sunrise, raising one wing like waving hello, scenic morning mist background, National Geographic",
     ),
     (
         "Аниме Studio Ghibli",
-        "cozy Studio Ghibli anime illustration of a cute duck waving good morning on a sunny balcony with tea",
+        "MEDIUM SHOT anime illustration: a cute white duck in full body standing on a sunny balcony with a teapot, waving its wing happily, scenic green hills and blue sky in background, Studio Ghibli style",
     ),
     (
         "Китайская живопись (Ханчжоу)",
-        "traditional Chinese ink and watercolor painting of a cute duck waving wing at sunrise over West Lake in Hangzhou with pagodas",
+        "MEDIUM SHOT traditional Chinese ink and watercolor painting: a cute duck in full body standing on a bridge waving its wing, scenic West Lake in Hangzhou with lotus flowers and pagoda in background",
     ),
     (
-        "Киберпанк",
-        "cool cute cyberpunk duck wearing neon visor waving wing in a futuristic sunny morning city, vibrant colors",
+        "Крутой Киберпанк",
+        "MEDIUM SHOT full body: a cute yellow duck wearing neon sunglasses and a tiny jacket, standing on a futuristic street and waving its wing, colorful cyberpunk morning city background",
     ),
     (
         "Вязаная игрушка (Амигуруми)",
-        "macro photo of a cute handmade knitted crochet amigurumi duck toy waving wing on a cozy wooden breakfast table",
+        "MEDIUM SHOT PHOTO: a handmade knitted yellow amigurumi duck toy in full body standing next to a croissant and tea cup on a sunny wooden table by the window, waving one wing",
     ),
     (
-        "Акварельная открытка",
-        "delicate artistic watercolor painting of a cheerful duck waving wing among morning flowers, bright sunny mood",
+        "Пушистая акварель",
+        "MEDIUM SHOT watercolor postcard: a cheerful fluffy duckling in full body standing among morning meadow flowers and waving its wing, soft scenic pastel background",
     ),
     (
-        "Стиль LEGO",
-        "cute LEGO brick duck figure waving wing in a sunny LEGO morning garden, macro photography",
+        "Фигурка LEGO",
+        "MEDIUM SHOT PHOTO: a LEGO brick yellow duck figure in full body standing in a sunny LEGO town square with trees and a bench, waving its wing",
     ),
 ]
 
 
 def send_morning_duck():
-    ru_greet, cn_greet = WEEKDAYS[datetime.now().weekday()]
+    ru_greet, cn_chars, pinyin_str, ru_trans = WEEKDAYS[
+        datetime.now().weekday()
+    ]
     style_name, style_prompt = random.choice(DUCK_STYLES)
     seed = random.randint(1, 999999)
 
     encoded_prompt = urllib.parse.quote(style_prompt)
-    img_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&seed={seed}&nologo=true"
-    caption = f"🦆 <b>{ru_greet}</b>\n🇨🇳 <b>{cn_greet}</b>\n\n<i>🎨 Стиль дня: {style_name}</i>"
+    img_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&seed={seed}&model=flux&enhance=false&nologo=true"
+
+    caption = (
+        f"🦆 <b>{ru_greet}</b>\n\n"
+        f"🇨🇳 <b>{cn_chars}</b>\n"
+        f"🔤 <i>{pinyin_str}</i>\n"
+        f"🗣 {ru_trans}\n\n"
+        f"🎨 <i>Стиль дня: {style_name}</i>"
+    )
     tg_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
 
     try:
-        print("Генерирую утку через ИИ (около 5-10 сек)...")
-        img_resp = requests.get(img_url, timeout=45)
-        if img_resp.status_code == 200:
+        print(f"Генерирую утку ({style_name})...")
+        img_resp = requests.get(img_url, timeout=45, verify=False)
+        if img_resp.status_code == 200 and len(img_resp.content) > 5000:
             files = {"photo": ("duck.jpg", img_resp.content, "image/jpeg")}
             data = {"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML"}
             requests.post(tg_url, data=data, files=files, timeout=30)
@@ -103,9 +153,21 @@ def send_morning_duck():
                     "caption": caption,
                     "parse_mode": "HTML",
                 },
+                timeout=30,
             )
+            print("Утка отправлена через сервер Telegram!")
     except Exception as e:
-        print("Ошибка отправки утки:", e)
+        print("Переключаюсь на отправку через сервер Telegram...", e)
+        requests.post(
+            tg_url,
+            data={
+                "chat_id": CHAT_ID,
+                "photo": img_url,
+                "caption": caption,
+                "parse_mode": "HTML",
+            },
+            timeout=30,
+        )
 
 
 def get_currencies_and_crypto():
@@ -196,14 +258,15 @@ def get_weather():
 
 
 def clean_wiki(text):
+    text = re.sub(r"<ref[^>]*>.*?</ref>", "", text, flags=re.DOTALL)
+    text = re.sub(r"<[^>]+>", "", text)
     text = re.sub(r"\[\[(?:[^|\]]*\|)?([^\]]+)\]\]", r"\1", text)
     text = re.sub(r"\{\{[^}]+\}\}", "", text)
-    text = re.sub(r"<[^>]+>", "", text)
-    return text.strip(" *—–-")
+    text = re.sub(r"'{2,}", "", text)
+    return text.strip(" *—–-:;")
 
 
 def get_holidays():
-    """Праздники в России (из Википедии) и в Китае (праздники КНР + 24 сезона Цзеци)"""
     now = datetime.now()
     months = [
         "",
@@ -232,36 +295,68 @@ def get_holidays():
         ).json()
         wikitext = r["parse"]["wikitext"]["*"]
 
-        # Вырезаем блок Праздники
+        # Исправленное регулярное выражение: захватывает все подразделы === ... === внутри == Праздники ==
         m = re.search(
-            r"==\s*Праздники[^=]*==(.*?)(?:==[^=]|$)", wikitext, re.DOTALL
+            r"==\s*Праздники[^=\n]*==(.*?)(?:\n==\s*[^=\s]|\Z)",
+            wikitext,
+            re.DOTALL,
         )
         section = m.group(1) if m else wikitext
 
         ru_list = []
-        for line in section.split("\n"):
-            if "Россия" in line or "СССР" in line:
-                parts = line.split(":", 1)
-                item = clean_wiki(parts[1] if len(parts) > 1 else line)
+        intl_list = []
+        in_ru_block = False
+
+        for raw_line in section.split("\n"):
+            line = raw_line.strip()
+            if not line.startswith("*"):
+                if line.startswith("==="):
+                    in_ru_block = False
+                continue
+
+            # Проверка вложенных списков вида "* Россия:" -> "** Праздник"
+            if line.startswith("* ") and not line.startswith("**"):
+                in_ru_block = "Россия" in line or "СССР" in line
+
+            if ("Россия" in line or "СССР" in line) and ":" in line:
+                item = clean_wiki(line.split(":", 1)[1])
                 if len(item) > 3:
                     ru_list.append(item)
-            if "Китай" in line or "КНР" in line:
-                parts = line.split(":", 1)
-                cn_wiki_hol = clean_wiki(parts[1] if len(parts) > 1 else line)
+            elif in_ru_block and line.startswith("**"):
+                item = clean_wiki(line)
+                if len(item) > 3:
+                    ru_list.append(item)
+            elif ("Китай" in line or "КНР" in line) and ":" in line:
+                cn_wiki_hol = clean_wiki(line.split(":", 1)[1])
+            elif (
+                line.startswith("* ")
+                and ":" not in line
+                and not line.endswith(":")
+            ):
+                item = clean_wiki(line)
+                if len(item) > 4:
+                    intl_list.append(item)
 
-        # Если нет чисто российского, берём международный или народный из этого же дня
-        if not ru_list:
-            for line in section.split("\n"):
-                if line.startswith("* ") and ":" not in line:
-                    item = clean_wiki(line)
-                    if len(item) > 4:
-                        ru_list.append(item)
-        if ru_list:
-            ru_hol = "; ".join(ru_list[:2])
+        # Также проверяем секцию народных примет/календаря (например, Дмитриев день)
+        m_folk = re.search(
+            r"===\s*(?:Приметы|Народный календарь)[^=\n]*===(.*?)(?:\n==|\Z)",
+            wikitext,
+            re.DOTALL,
+        )
+        if m_folk:
+            for raw_line in m_folk.group(1).split("\n"):
+                if raw_line.strip().startswith("*"):
+                    folk_item = clean_wiki(raw_line.split("—")[0].split(".")[0])
+                    if 3 < len(folk_item) < 45:
+                        intl_list.append(f"{folk_item} (народн.)")
+                        break
+
+        combined = ru_list + intl_list
+        if combined:
+            ru_hol = "; ".join(combined[:3])
     except Exception:
         pass
 
-    # Праздники и сезоны Китая
     cn_fixed = {
         (1, 1): "Новый год (元旦 Юаньдань)",
         (2, 14): "Праздник весны / Китайский Новый год (春节)",
@@ -279,7 +374,6 @@ def get_holidays():
         (11, 11): "День холостяков / Всемирный день шопинга (双十一)",
     }
 
-    # Определяем текущий традиционный сезон Китая (24 сезона Цзеци)
     doy = now.timetuple().tm_yday
     solar_terms = [
         (311, "Сезон Лидун (立冬 — «Начало зимы», время пельменей цзяоцзы)"),
