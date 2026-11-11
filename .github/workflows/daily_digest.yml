@@ -3,7 +3,7 @@ name: Daily Morning Digest
 on:
   schedule:
     # Запуск каждый день в 05:00 UTC (08:00 по Москве / Краснодару / Алуште)
-    -  cron: '17 4 * * *'
+    -  - cron: '47 3 * * *'
   workflow_dispatch: # Включает кнопку ручного запуска Run workflow
 
 jobs:
